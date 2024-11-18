@@ -30,18 +30,19 @@ rxnLEVELS = c("miR-7-L22#WT_perfect",
               "miR-7-L22#H56A_perfect",
               "miR-7-L22#R68A_perfect",
               "miR-7-L22#R97A_perfect",
+              "miR-7-L22#K98A_perfect",
+              "miR-7-L22#H56A.K98A_perfect",
               "miR-7-L22#R97A.K98A_perfect",
-              "miR-7-L22#R97E.K98E_perfect",
               "miR-7-L22#quadA_perfect",
-              "miR-7-L22#WT_16bp",
-              "miR-7-L22#H56A_16bp",
-              "miR-7-L22#R68A_16bp",
-              "miR-7-L22#R97A.K98A_16bp",
-              "miR-7-L22#R97E.K98E_16bp",
-              "miR-7-L22#quadA_16bp")
+              "miR-7-L22#R97E.K98E_perfect"
+              )
 # rxnLEVELS = c("miR-7-L22#WT_perfect", "miR-7-L22#R710A_perfect", "miR-7-L22#H712A_perfect", "miR-7-L22#R710A.H712A_perfect")
 # rxnLEVELS = c("miR-7-L22#WT_mm10", "miR-7-L22#R710A_mm10", "miR-7-L22#H712A_mm10", "miR-7-L22#R710A.H712A_mm10",
 #               "miR-7-L22#WT_mm11", "miR-7-L22#R710A_mm11", "miR-7-L22#H712A_mm11", "miR-7-L22#R710A.H712A_mm11")
+# rxnLEVELS = c("miR-7-L22#WT(Sept)_perfect",    "miR-7-X3#WT(Sept)_perfect",
+#               "miR-7-L22#R710A(Sept)_perfect", "miR-7-X3#R710A(Sept)_perfect",
+#               "miR-7-L22#H712A(Sept)_perfect", "miR-7-X3#H712A(Sept)_perfect",
+#               "miR-7-L22#R635A(Sept)_perfect", "miR-7-X3#R635A(Sept)_perfect")
 
 # kslice (ranges) ----
 df.k %>%
@@ -54,9 +55,10 @@ df.k %>%
                      breaks = 10^seq(-10,10,1),
                      expand = c(0, 0)) +
   coord_cartesian(xlim = c(
-    0.001, 10
+    0.05, 12
     # 0.012, 6
     # 0.00005, 0.025
+    # 0.05, 11
     )) +
   labs(x = "k_slice (min-1)", y = "") +
   theme0 +
@@ -119,3 +121,46 @@ df.centmm.delta %>%
   labs(y = "AGO variant",
        x = "Fold change in kslice upon target mismatch, log10") +
   theme0
+
+#################
+
+# R10 effects
+
+R10.expes = c("miR-7-L22#WT(Sept)_perfect",    "miR-7-X3#WT(Sept)_perfect",
+              "miR-7-L22#R710A(Sept)_perfect", "miR-7-X3#R710A(Sept)_perfect",
+              "miR-7-L22#H712A(Sept)_perfect", "miR-7-X3#H712A(Sept)_perfect",
+              "miR-7-L22#R635A(Sept)_perfect", "miR-7-X3#R635A(Sept)_perfect")
+
+df.R10 = df.k %>%
+  filter(rxn %in% R10.expes) %>%
+  separate(col = "rxn", sep = "#|_", into = c("miR", "AGOmut", "targ")) %>%
+  mutate(AGOmut = sub("\\(Sept\\)", "", AGOmut)) %>%
+  mutate(kcat.se = (log(kcat.hi)-log(kcat))/1.96)
+
+df.R10.R = df.R10 %>%
+  filter(miR == "miR-7-L22") %>%
+  transmute(AGOmut = AGOmut, kcat.R = kcat, kcat.se.R = kcat.se)
+
+df.R10.delta = df.R10 %>%
+  filter(miR == "miR-7-X3") %>%
+  left_join(df.R10.R, by = "AGOmut") %>%
+  mutate(
+    kcat.FC = kcat.R/kcat,
+    kcat.se.comp = sqrt(kcat.se^2+kcat.se.R^2),
+    kcat.FC.hi = kcat.FC * exp(kcat.se.comp*1.96),
+    kcat.FC.lo = kcat.FC / exp(kcat.se.comp*1.96)
+  )
+
+df.R10.delta %>%
+  mutate(AGOmut = factor(AGOmut, levels = c("WT", "R710A", "H712A", "R635A"))) %>%
+  ggplot(aes(x = AGOmut, y = kcat.FC)) +
+  geom_col(aes(fill = AGOmut), width = 0.8, show.legend = F) +
+  geom_errorbar(aes(ymin = kcat.FC.lo, ymax = kcat.FC.hi),
+                color = "black", linewidth = 0.75, width = 0.4) +
+  geom_hline(yintercept = 1, color = "black", linewidth = 0.75) +
+  scale_y_continuous(trans = "log10") +
+  coord_cartesian(ylim = c(0.8, 10.0)) +
+  labs(x = "HsAGO2 variant",
+       y = "Fold change in kslice due to position-10 determinant, log10") +
+  theme0
+

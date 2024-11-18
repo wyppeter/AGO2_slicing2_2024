@@ -55,7 +55,7 @@ df.graph = df.fit %>%
   mutate(fracbound = A * exp(-time * exp(koff)) + void)
 
 # Plot time course ----
-# MIRHERE = "miR-200a"
+# MIRHERE = "miR-200b"
 MIRHERE = "let-7a"
 df.fb %>%
   filter(time > 0,
@@ -119,7 +119,7 @@ df.koff = df.fit %>%
             Toff.s = Toff * 60
   ) %>%
   mutate(miR_AGOmut = factor(miR_AGOmut, levels = c(
-    "miR-200a WT", "miR-200a EI_5xE",
+    "miR-200b WT", "miR-200b EI_5xE",
     "let-7a WT", "let-7a EI_5xE"
   )))
 

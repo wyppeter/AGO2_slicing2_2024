@@ -7,7 +7,6 @@
 # tidyverse
 library(tidyverse)
 # graphing
-library(ggnewscale)
 library(viridis)
 library(ggpubr)
 # ODEs
@@ -222,9 +221,11 @@ WTkon = 4.03020745277037/60
 rxns.to.sim = c("miR-7-L22#H56A_perfect",
                 "miR-7-L22#R68A_perfect",
                 "miR-7-L22#R97A_perfect",
+                "miR-7-L22#K98A_perfect",
+                "miR-7-L22#H56A.K98A_perfect",
                 "miR-7-L22#R97A.K98A_perfect",
-                "miR-7-L22#R97E.K98E_perfect",
                 "miR-7-L22#quadA_perfect",
+                "miR-7-L22#R97E.K98E_perfect",
                 
                 "miR-7-L22#R710A_perfect",
                 "miR-7-L22#H712A_perfect",
@@ -247,16 +248,19 @@ df.graph.slowkonsim = df.graph.setup.slowkonsim %>%
 
 # PLOT ----
 # FACETS = as.integer(round(sqrt(n.rxns*3/2)))
-FACETS = 2
-# FACETS = 4
+# FACETS = 2
+FACETS = 3
 rxn.plot.sublist = c(
-  # "miR-7-L22#WT_perfect",
-  # "miR-7-L22#H56A_perfect",
-  # "miR-7-L22#R68A_perfect",
-  # "miR-7-L22#R97A_perfect",
-  # "miR-7-L22#R97A.K98A_perfect",
-  # "miR-7-L22#R97E.K98E_perfect",
-  # "miR-7-L22#quadA_perfect"
+  "miR-7-L22#WT_perfect",
+  
+  "miR-7-L22#H56A_perfect",
+  "miR-7-L22#R68A_perfect",
+  "miR-7-L22#R97A_perfect",
+  "miR-7-L22#K98A_perfect",
+  "miR-7-L22#H56A.K98A_perfect",
+  "miR-7-L22#R97A.K98A_perfect",
+  "miR-7-L22#quadA_perfect",
+  "miR-7-L22#R97E.K98E_perfect"
   
   # "miR-7-L22#WT_16bp",
   # "miR-7-L22#H56A_16bp",
@@ -265,10 +269,10 @@ rxn.plot.sublist = c(
   # "miR-7-L22#R97E.K98E_16bp",
   # "miR-7-L22#quadA_16bp"
 
-  "miR-7-L22#WT_perfect",
-  "miR-7-L22#H712A_perfect",
-  "miR-7-L22#R710A_perfect",
-  "miR-7-L22#R710A.H712A_perfect"
+  # "miR-7-L22#WT_perfect",
+  # "miR-7-L22#H712A_perfect",
+  # "miR-7-L22#R710A_perfect",
+  # "miR-7-L22#R710A.H712A_perfect"
   
   # "miR-7-L22#WT_mm10",
   # "miR-7-L22#H712A_mm10",
@@ -279,19 +283,22 @@ rxn.plot.sublist = c(
   # "miR-7-L22#H712A_mm11",
   # "miR-7-L22#R710A_mm11",
   # "miR-7-L22#R710A.H712A_mm11"
+  
+  # "miR-7-L22#WT(Sept)_perfect", "miR-7-L22#R710A(Sept)_perfect", "miR-7-L22#H712A(Sept)_perfect", "miR-7-L22#R635A(Sept)_perfect",
+  # "miR-7-X3#WT(Sept)_perfect", "miR-7-X3#R710A(Sept)_perfect", "miR-7-X3#H712A(Sept)_perfect", "miR-7-X3#R635A(Sept)_perfect"
 )
 df.dt %>%
   filter(rxn %in% rxn.plot.sublist) %>% mutate(rxn = factor(rxn, levels = rxn.plot.sublist)) %>%
   ggplot(aes(x = time/60, y = fraccleaved,
              
-             # color = conc_f, group = conc_f
-             color = factor(paste(rxn, conc)), group = factor(paste(rxn, conc))
+             color = conc_f, group = conc_f
+             # color = factor(paste(rxn, conc)), group = factor(paste(rxn, conc))
              
              )) +
   coord_cartesian(xlim = c(
-    # 0, 4
+    0, 4
     # 0, 70
-    0, 11
+    # 0, 11
     # 0, 250
     )) +
   geom_line(data = df.graph %>%
@@ -318,48 +325,42 @@ df.dt %>%
   
   facet_wrap("rxn", ncol = FACETS, scales = "free") +
 
-  # scale_color_manual(breaks = c(2, 5, 10, Inf),
-  #                    values = c("gray75", "gray50", "gray25", "black"),
-  #                    name = "[RISC] (nM)") +
+  scale_color_manual(breaks = c(2, 5, 10, Inf),
+                     # values = c("gray75", "gray50", "gray25", "black"),
+                     values = c("gray65", "gray45", "gray25", "black"),
+                     name = "[RISC] (nM)") +
   
   # ###/\/\/\/\/
-  # new_scale_color() +
+  geom_line(data = df.graph.slowkonsim %>%
+              filter(rxn %in% rxn.plot.sublist) %>% mutate(rxn = factor(rxn, levels = rxn.plot.sublist)),
+            aes(y = fraccleaved.ode),
+            linewidth = 0.75, linetype = "dashed") +
+  # ###/\/\/\/\/
+  
+  # ###/\/\/\/\/
   # geom_line(data = df.graph.slowkonsim %>%
   #             filter(rxn %in% rxn.plot.sublist) %>% mutate(rxn = factor(rxn, levels = rxn.plot.sublist)),
   #           aes(y = fraccleaved.ode,
   #               group = interaction(conc_f, slow.fold),
-  #               color = factor(slow.fold), alpha = conc_f),
+  #               color = factor(paste(rxn, conc))),
   #           linewidth = 0.75, linetype = "dashed") +
   # scale_alpha_manual(breaks = c(2, 5, 10),
   #                    values = c(0.2, 0.5, 0.8),
   #                    name = "[RISC] (nM)") +
-  # scale_color_manual(values = c("violetred2")) +
   # ###/\/\/\/\/
-  
-  ###/\/\/\/\/
-  geom_line(data = df.graph.slowkonsim %>%
-              filter(rxn %in% rxn.plot.sublist) %>% mutate(rxn = factor(rxn, levels = rxn.plot.sublist)),
-            aes(y = fraccleaved.ode,
-                group = interaction(conc_f, slow.fold),
-                color = factor(paste(rxn, conc))),
-            linewidth = 0.75, linetype = "dashed") +
-  scale_alpha_manual(breaks = c(2, 5, 10),
-                     values = c(0.2, 0.5, 0.8),
-                     name = "[RISC] (nM)") +
-  ###/\/\/\/\/
 
-  scale_color_manual(breaks = c("miR-7-L22#WT_perfect Inf",          "miR-7-L22#WT_perfect 10",          "miR-7-L22#WT_perfect 5",          "miR-7-L22#WT_perfect 2",
-                                "miR-7-L22#R710A_perfect Inf",       "miR-7-L22#R710A_perfect 10",       "miR-7-L22#R710A_perfect 5",       "miR-7-L22#R710A_perfect 2",
-                                "miR-7-L22#H712A_perfect Inf",       "miR-7-L22#H712A_perfect 10",       "miR-7-L22#H712A_perfect 5",       "miR-7-L22#H712A_perfect 2",
-                                "miR-7-L22#R710A.H712A_perfect Inf", "miR-7-L22#R710A.H712A_perfect 10", "miR-7-L22#R710A.H712A_perfect 5", "miR-7-L22#R710A.H712A_perfect 2"
-                                ),
-                     values = c(
-                       "black", "gray30", "gray50", "gray70",
-                       "steelblue4", "steelblue", "steelblue2", "skyblue1",
-                       "violetred4", "palevioletred3", "palevioletred1", "#FFBBCC",
-                       "purple4", "purple3", "mediumpurple3", "mediumpurple1"
-                       ),
-                     name = "[RISC] (nM)") +
+  # scale_color_manual(breaks = c("miR-7-L22#WT_perfect Inf",          "miR-7-L22#WT_perfect 10",          "miR-7-L22#WT_perfect 5",          "miR-7-L22#WT_perfect 2",
+  #                               "miR-7-L22#R710A_perfect Inf",       "miR-7-L22#R710A_perfect 10",       "miR-7-L22#R710A_perfect 5",       "miR-7-L22#R710A_perfect 2",
+  #                               "miR-7-L22#H712A_perfect Inf",       "miR-7-L22#H712A_perfect 10",       "miR-7-L22#H712A_perfect 5",       "miR-7-L22#H712A_perfect 2",
+  #                               "miR-7-L22#R710A.H712A_perfect Inf", "miR-7-L22#R710A.H712A_perfect 10", "miR-7-L22#R710A.H712A_perfect 5", "miR-7-L22#R710A.H712A_perfect 2"
+  #                               ),
+  #                    values = c(
+  #                      "black", "gray30", "gray50", "gray70",
+  #                      "steelblue4", "steelblue", "steelblue2", "skyblue1",
+  #                      "violetred4", "palevioletred3", "palevioletred1", "#FFBBCC",
+  #                      "purple4", "purple3", "mediumpurple3", "mediumpurple1"
+  #                      ),
+  #                    name = "[RISC] (nM)") +
 
   # scale_color_manual(breaks = c(
   #   "miR-7-L22#WT_mm10 Inf",          "miR-7-L22#WT_mm10 10",          "miR-7-L22#WT_mm10 5",          "miR-7-L22#WT_mm10 2",
@@ -383,10 +384,32 @@ df.dt %>%
   #   ),
   #   name = "[RISC] (nM)") +
 
+  # scale_color_manual(breaks = c(
+  #   "miR-7-L22#WT(Sept)_perfect Inf",    "miR-7-L22#WT(Sept)_perfect 10",    "miR-7-L22#WT(Sept)_perfect 5",    "miR-7-L22#WT(Sept)_perfect 2",   
+  #   "miR-7-L22#R710A(Sept)_perfect Inf", "miR-7-L22#R710A(Sept)_perfect 10", "miR-7-L22#R710A(Sept)_perfect 5", "miR-7-L22#R710A(Sept)_perfect 2",
+  #   "miR-7-L22#H712A(Sept)_perfect Inf", "miR-7-L22#H712A(Sept)_perfect 10", "miR-7-L22#H712A(Sept)_perfect 5", "miR-7-L22#H712A(Sept)_perfect 2",
+  #   "miR-7-L22#R635A(Sept)_perfect Inf", "miR-7-L22#R635A(Sept)_perfect 10", "miR-7-L22#R635A(Sept)_perfect 5", "miR-7-L22#R635A(Sept)_perfect 2",
+  #   "miR-7-X3#WT(Sept)_perfect Inf",     "miR-7-X3#WT(Sept)_perfect 10",     "miR-7-X3#WT(Sept)_perfect 5",     "miR-7-X3#WT(Sept)_perfect 2",    
+  #   "miR-7-X3#R710A(Sept)_perfect Inf",  "miR-7-X3#R710A(Sept)_perfect 10",  "miR-7-X3#R710A(Sept)_perfect 5",  "miR-7-X3#R710A(Sept)_perfect 2", 
+  #   "miR-7-X3#H712A(Sept)_perfect Inf",  "miR-7-X3#H712A(Sept)_perfect 10",  "miR-7-X3#H712A(Sept)_perfect 5",  "miR-7-X3#H712A(Sept)_perfect 2", 
+  #   "miR-7-X3#R635A(Sept)_perfect Inf",  "miR-7-X3#R635A(Sept)_perfect 10",  "miR-7-X3#R635A(Sept)_perfect 5",  "miR-7-X3#R635A(Sept)_perfect 2"
+  #   ),
+  # values = c(
+  #   "black", "gray30", "gray50", "gray70",
+  #   "steelblue4", "steelblue", "steelblue2", "skyblue1",
+  #   "violetred4", "palevioletred3", "palevioletred1", "#FFBBCC",
+  #   "darkgreen", "palegreen4", "palegreen3", "darkolivegreen2",
+  #   "black", "gray30", "gray50", "gray70",
+  #   "steelblue4", "steelblue", "steelblue2", "skyblue1",
+  #   "violetred4", "palevioletred3", "palevioletred1", "#FFBBCC",
+  #   "darkgreen", "palegreen4", "palegreen3", "darkolivegreen2"
+  # ),
+  # name = "[RISC] (nM)") +
+
   scale_x_continuous(
-    # breaks = seq(0, 200, 1),
+    breaks = seq(0, 200, 1),
     # breaks = seq(0, 200, 20),
-    breaks = seq(0, 200, 5),
+    # breaks = seq(0, 200, 5),
     # breaks = seq(0, 200, 50),
     expand = c(0, 0)
     ) +

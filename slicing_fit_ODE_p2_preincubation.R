@@ -1,4 +1,5 @@
 # Slicing assay fitting and graphing
+# For preincubation datasets
 # Requires helper file ODElib.R
 # Bartel Lab
 # Peter Y. Wang 2024
@@ -31,7 +32,8 @@ formatCoefs = function(x, dp = 3){ as.character(format(round(as.numeric(x), dp),
 # CONSTANTS ----
 difflim = log(6/60)  # given known miR-7 kon; nM-1 s-1 (10-10 M-1 s-1); diffusion limit; 6 in nM-1 min-1, 0.1 in nM-1 s-1
 inf.conc = 1e6  # nM; a large number to graph limit behavior (no kon effects)
-Rconc = 0.05  # nM
+Rconc = 0.02  # nM  # only for plotting here
+EXCHANGE_DIL = 1/2.75
 
 # Set ggplot2 theme ----
 theme0 = theme(
@@ -51,39 +53,17 @@ theme0 = theme(
 
 # READ DATA ----
 # [A] >= [R]*4
-df.raw = read.csv(
-  "slicing_data_p2.csv",
+df.raw = read.csv("slicing_data_preincubation.csv",
   stringsAsFactors = T) %>%
-  mutate(rxn = fct_inorder(factor(paste0(miR, "#", AGOmut, "_", targ)))) %>%
-  select(-miR, -targ, -AGOmut) %>%
-  mutate(Rconc = Rconc)
-
-# Manual subsets
-manual.slowone = c(
-  "miR-7-L22#quadA_16bp"
-  )  # cannot call Fa; kslice too slow
-manual.slowerone = c(
-  "miR-7-L22#R97E.K98E_16bp",
-  "miR-7-L22#WT_mm10",
-  "miR-7-L22#H712A_mm10",
-  "miR-7-L22#R710A_mm10",
-  "miR-7-L22#R710A.H712A_mm10",
-  "miR-7-L22#WT_mm11",
-  "miR-7-L22#H712A_mm11",
-  "miR-7-L22#R710A_mm11",
-  "miR-7-L22#R710A.H712A_mm11"
-  )  # cannot see Fa and beyond
-manual.slows = c(manual.slowone, manual.slowerone)
-cannotfitph2 = c(
-  "miR-7-L22#R97A.K98A_16bp"
-  )  # phase 2 cannot be well fit
-
+  mutate(rxn = factor(paste0(miR, "_", preincubation)))
 
 # PROCESS AND COMBINE DATA ----
 df = df.raw %>%
+  # Concentration dilution correction due to buffer exchange
+  mutate(conc = conc * EXCHANGE_DIL) %>%
   ## MISC CLEANUP
   mutate(time = as.integer(round(time*60))) %>%  # rounding to the time resolution of ODE, and convert to seconds
-  filter(conc != 0, time != 0) %>%  # discard control points
+  # filter(conc != 0, time != 0) %>%  # discard control points
   mutate(conc_d = factor(conc)) %>%  # factor-ize some variables
   arrange(rxn, conc)
 
@@ -92,7 +72,7 @@ rxns = as.character(unname(levels(df$rxn)))
 
 # Simplify df for fitting
 df.dt = df %>%
-  select(rxn, conc, Rconc, time, fraccleaved)
+  select(rxn, miR, preincubation, conc, Rconc, time, fraccleaved)
 
 #############################################################
 # ODE SETUP ----
@@ -215,8 +195,11 @@ ODEcost = function(df.data, params, params.static) {
 #####################################################################
 
 # Generating the parameter bounds ----
-Fa.lo.lim = 0.60
-Fa.lo.lim.guess = 0.75
+# Fa.lo.lim = 0.60
+# Fa.lo.lim.guess = 0.75
+Fa.lo.lim = 0.2
+Fa.lo.lim.guess = 0.3
+
 Fa.default = 0.85
 kph2.hi.lim =       log(0.2   /60) # s-1  # shouldn't be higher than kcat
 kph2.hi.lim.guess = log(0.01  /60) # s-1  # greater constraint for guessing
@@ -225,7 +208,6 @@ kph2.guess = log(0.0002/60) # s-1  # same guess for all. prevents starting at 0 
 uLim = 1 - 1e-2  # defense against limit placement of init ## changed
 lLim = 1e-6      # defense against limit placement of init
 kcat.init = 1/60  # lit lower end value
-kcat.init.slow = 0.001/60  # too slow for NLS to handle at normal init point
 kcat.uLim = 60/60  # set ceiling to avoid runaway fits for NLS guessing
 
 if(modelmode == "MAX"){
@@ -250,9 +232,7 @@ genGuess = function(df.here, modelmode, ignoredGuesses){
   
   # Get naive guess for NLS to optimize
   naive.guess = c(kon = kon.init,
-                  kcat = if_else(rxn.here %in% manual.slowerone,
-                                 kcat.init.slow,
-                                 kcat.init),
+                  kcat = kcat.init,
                   kph2 = exp(kph2.guess),
                   Fa = Fa.guess0
                   )
@@ -496,7 +476,6 @@ lim.static.wrapper = function(y){
 ## First pass ----
 ODEfit = df.dt %>%
   ## Remove special data points
-  filter(!rxn %in% manual.slows) %>%
   mutate(rapidon = FALSE,
          nobipha = FALSE,
          fixplat = FALSE) %>%
@@ -546,8 +525,7 @@ if(length(secondPass.rxns) > 0){
   cat(paste(c(secondPass.rxns, ""), collapse = "\n"))
 
   ODEfit.r = df.dt %>%
-    filter(rxn %in% secondPass.rxns,
-           !rxn %in% manual.slows) %>%
+    filter(rxn %in% secondPass.rxns) %>%
     left_join(secondPass, by = "rxn") %>%
     group_by(rxn) %>%
     do(extractCoef(.,
@@ -591,8 +569,7 @@ thirdPass = ODEfit %>%
     rapidon = kon == exp(difflim),  # inherit rapidon designation
     nobipha = any(
       kph2.p > 0.5,
-      kph2 < exp(kph2.lo.lim) * 1.05,
-      rxn %in% cannotfitph2  # MANUAL DEFER, no plateau in data
+      kph2 < exp(kph2.lo.lim) * 1.05
     ),
     secondPassOk = !nobipha,
     fixplat = F
@@ -608,8 +585,7 @@ if(length(thirdPass.rxns) > 0 & modelmode != "MAX"){
   cat(paste(c(thirdPass.rxns, ""), collapse = "\n"))
 
   ODEfit.r3 = df.dt %>%
-    filter(rxn %in% thirdPass.rxns,
-           !rxn %in% manual.slows) %>%
+    filter(rxn %in% thirdPass.rxns) %>%
     left_join(thirdPass, by = "rxn") %>%
     group_by(rxn) %>%
     do(extractCoef(.,
@@ -644,113 +620,12 @@ if(length(thirdPass.rxns) > 0 & modelmode != "MAX"){
     rbind(ODEfit.r3)
 }
 
-## Now go back to the ones that were manually set to be fit without Fa due to limited info on plateau ----
-
-## Fourth pass (Ambiguous plateau due to slow kslice; YES fit second phase) ----
-print("Now fourth pass:")
-
-fourthPass.rxns = df.dt %>%
-  filter(rxn %in% manual.slowone) %>%
-  pull(rxn) %>%
-  as.character() %>% unname()
-
-if(length(fourthPass.rxns) > 0){
-  ODEfit.slowone = df.dt %>%
-    filter(rxn %in% manual.slowone) %>%
-    mutate(rapidon = TRUE,
-           nobipha = FALSE,
-           fixplat = TRUE
-           ) %>%
-    group_by(rxn) %>%
-    do(extractCoef(.,
-                   modFit(
-                     f = ODEcost,
-                     p = lim.guess.wrapper(.),
-                     df.data = .,
-                     params.static = lim.static.wrapper(.),
-                     lower = lim.bound.wrapper(.)[[1]],
-                     upper = lim.bound.wrapper(.)[[2]],
-                     method = "Marq",
-                     jac = NULL,
-                     control = list(
-                       nprint = 0,
-                       maxiter = MAXITER
-                     ),
-                     hessian = T
-                   ),
-                   firstpass = F
-    ) %>%
-      mutate(rapidon = TRUE,
-             nobipha = FALSE,
-             fixplat = TRUE
-             )) %>%
-    mutate(
-      kon = exp(difflim),
-      Fa = givenplat
-    )  # give the fixed values back to the panel
-   
-  # Combine, combine, combine
-  ODEfit.add.slow.bu = ODEfit
-  ODEfit = ODEfit %>%
-    rbind(ODEfit.slowone)
-}
-
-## Fifth pass (Too slow to ever see plateau; fit only kslice) ----
-print("Now fifth pass:")
-
-fifthPass.rxns = df.dt %>%
-  filter(rxn %in% manual.slowerone) %>%
-  pull(rxn) %>%
-  as.character() %>% unname()
-
-if(length(fifthPass.rxns) > 0){
-  ODEfit.slowerone = df.dt %>%
-    filter(rxn %in% manual.slowerone) %>%
-    mutate(rapidon = TRUE,
-           nobipha = TRUE,
-           fixplat = TRUE
-    ) %>%
-    group_by(rxn) %>%
-    do(extractCoef(.,
-                   modFit(
-                     f = ODEcost,
-                     p = lim.guess.wrapper(.),
-                     df.data = .,
-                     params.static = lim.static.wrapper(.),
-                     lower = lim.bound.wrapper(.)[[1]],
-                     upper = lim.bound.wrapper(.)[[2]],
-                     method = "Marq",
-                     jac = NULL,
-                     control = list(
-                       nprint = 0,
-                       maxiter = MAXITER
-                     ),
-                     hessian = T
-                   ),
-                   firstpass = F
-    ) %>%
-      mutate(rapidon = TRUE,
-             nobipha = TRUE,
-             fixplat = TRUE
-      )) %>%
-    mutate(
-      kon = exp(difflim),
-      kph2 = 0,
-      Fa = givenplat
-    )  # give the fixed values back to the panel
-  
-  # Combine, combine, combine
-  ODEfit.add.slower.bu = ODEfit
-  ODEfit = ODEfit %>%
-    rbind(ODEfit.slowerone)
-}
-
 ####################################################################
 
 # SETUP FOR PLOTS ----
 
 ## Get fit graphs ----
-expandTime = 1/3
+expandTime = 1/1
 
 ODEcalc.graph = function(d){
   # Given a one-row df of setup parameters, generate an ODE trajectory
@@ -797,7 +672,8 @@ df.graph.setup = ODEfit.plot %>%
   inner_join(df.concs, ., by = c("rxn"))
 df.graph = df.graph.setup %>%
   group_by(rxn, conc, Rconc) %>%
-  do(ODEcalc.graph(.))
+  do(ODEcalc.graph(.)) %>%
+  separate_wider_delim(rxn, "_", names = c("miR", "preincubation"))
 
 # Limit line (no kon delay, ~ Inf conc)
 n.rxns    = length(rxns)
@@ -812,77 +688,87 @@ df.graph.setup.inf = ODEfit.plot %>%
 df.graph.inf = df.graph.setup.inf %>%
   group_by(rxn, conc, Rconc) %>%
   do(ODEcalc.graph(.)) %>%
-  mutate(conc = Inf)
+  mutate(conc = Inf) %>%
+  separate_wider_delim(rxn, "_", names = c("miR", "preincubation"))
 
 ###########################################################################
 
 # PLOT ----
-FACETS = as.integer(round(sqrt(n.rxns*3/2)))
+FACETS = 4
 plt = df.dt %>%
+  group_by(miR) %>% mutate(concset = if_else(conc == max(conc), "high", "low")) %>% ungroup() %>%
   ggplot(aes(x = time/60, y = fraccleaved,
-             color = conc, group = conc)) +
-
-  geom_line(data = df.graph,
-            aes(y = fraccleaved.ode), linewidth = 0.5, alpha = 0.75) +
-  geom_line(data = df.graph.inf,
-            aes(y = fraccleaved.ode), linewidth = 0.5, alpha = 0.75, color = "black") +
-  geom_point(size = 0.75, stroke = 1, shape = 1, alpha = 0.75) +
-
-  # Fitted parameters print
-  # print in min-1
-  geom_text(data = ODEfit.plot,
-            inherit.aes = FALSE,
-            size = 3,
+             # color = preincubation,
+             color = paste(preincubation, concset),
+             group = factor(paste(preincubation, conc))
+             )) +
+  coord_cartesian(xlim = c(0, 25), ylim = c(0,1)) +
+  
+  geom_line(data = df.graph %>%
+              group_by(miR) %>% mutate(concset = if_else(conc == max(conc), "high", "low")) %>% ungroup(),
+            aes(y = fraccleaved.ode), 
+            linetype = "dashed",
+            linewidth = 0.75) +
+  geom_line(data = df.graph.inf %>%
+              mutate(concset = "inf"),
+            aes(y = fraccleaved.ode), 
+            linewidth = 0.75) +
+  geom_point(size = 1.2, stroke = 1.5, shape = 1) +
+  
+  geom_text(data = ODEfit.plot %>%
+              separate_wider_delim(rxn, "_", names = c("miR", "preincubation")),
+            inherit.aes = FALSE, show.legend = F,
+            size = 4.5,
+            x = Inf,
             y = -Inf,
-            vjust = -0.05,
-            color = "gray25",
-            # x = 4,
+            color = "black",
+            hjust = 1, vjust = -0.2,
             aes(
-              x = Tmax/60*1.2,
-              label = paste0("k_on (nM-1 min-1) = \n",
-                            formatCoefs(kon*60),
-                            " (",
-                            formatCoefs(kon.lo*60),
-                            "-",
-                            formatCoefs(kon.hi*60),
-                            ")",
-                            ",\nk_slice (min-1) = \n",
-                            formatCoefs(kcat*60, 4),
-                            " (",
-                            formatCoefs(kcat.lo*60, 4),
-                            "-",
-                            formatCoefs(kcat.hi*60, 4),
-                            ")",
-                            ",\nk_phase2 (min-1) = \n",
-                            formatCoefs(kph2*60, 4),
-                            " (",
-                            formatCoefs(kph2.lo*60, 4),
-                            "-",
-                            formatCoefs(kph2.hi*60, 4),
-                            ")",
-                            ",\nF_a = \n",
-                            formatCoefs(Fa),
-                            " (",
-                            formatCoefs(Fa.lo),
-                            "-",
-                            formatCoefs(Fa.hi),
-                            ")",
-                            ",\nN = ",
-                            sampleN
-                            ))) +
-
-  facet_wrap("rxn", ncol = FACETS, scales = "free") +
-  scale_color_viridis(direction = -1, option= "D", discrete = F, na.value = "gray80",
-                      end = 0.97, 
-                      limits = c(1, 20),
-                      trans = "log10",
-                      name = "[RISC] (nM)") +
-
-  # coord_cartesian(xlim = c(0,5)) +
-  # scale_x_continuous(expand = expansion(mult = c(0, expandTime), add = 0)) +
-  scale_x_continuous(expand = expansion(mult = c(0, expandTime), add = 0), trans = "log10") +
-  scale_y_continuous(limits = c(0, 1), expand = c(0, 0), breaks = seq(0, 1, 0.2)) +
-
+              label = paste0(preincubation, ":n = ", sampleN)
+            )) +
+  
+  facet_wrap("miR", ncol = FACETS, scales = "free") +
+  
+  # scale_color_manual(
+  #   breaks = c("none", "noCa", "wCa"),
+  #   labels = c("No preincubation", "0 mM Ca2+", "1 mM Ca2+"),
+  #   values = c("darkslateblue", "darkgoldenrod4", "firebrick"),
+  #   name = "Preincubation for 1 h without Mg2+"
+  # ) +
+  
+  scale_color_manual(
+    breaks = c("none inf", 
+               "none high", 
+               "none low", 
+               "noCa inf", 
+               "noCa high", 
+               "noCa low", 
+               "wCa inf", 
+               "wCa high", 
+               "wCa low"),
+    values = c("steelblue4",
+               "steelblue",
+               "steelblue1",
+               
+               "darkgoldenrod4",
+               "darkgoldenrod",
+               "lightgoldenrod3",
+               
+               "red4",
+               "orangered3",
+               "lightcoral"
+               ),
+    name = "Preincubation for 1 h without Mg2+"
+  ) +
+  
+  scale_x_continuous(
+    breaks = seq(0, 200, 10),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    expand = c(0, 0),
+    breaks = seq(0, 1, 0.2)) +
   xlab("Time (min)") +
   ylab("Fraction sliced") +
   theme0
@@ -896,12 +782,11 @@ if(SAVE_PLOT){
   ggsave(
     filename = paste0(
       "./",
-      "slicing_plot",
-      "_octonly",
+      "slicing_preincubationing_plot",
       ".pdf"),
     plot = plt,
 
-    width = 18, height = 12,
+    width = 11, height = 3,
 
     units = "in"
   )
@@ -938,8 +823,7 @@ if(SAVE_TABLE){
     )
   write.csv(ODEfit.write, paste0(
     "./",
-    "slicing_ks_p2_raw",
-    "_octonly",
+    "slicing_ks_preincubation_raw",
     ".csv"),
     quote = F, row.names = F
   )
